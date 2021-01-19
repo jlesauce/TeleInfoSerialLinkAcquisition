@@ -1,29 +1,36 @@
 ############################################################################
-# toolchain-raspberry.cmake
-# Copyright (C) 2014  Belledonne Communications, Grenoble France
+# MIT License
+#
+# Copyright (c) 2021 Julien LE SAUCE, France
 #
 ############################################################################
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+############################################################################
+#
+# Based on:
+# https://github.com/Pro/raspi-toolchain/blob/master/Toolchain-rpi.cmake
 #
 ############################################################################
 
-# Based on:
-# https://gitlab.linphone.org/BC/public/linphone-cmake-builder/blob/master/toolchains/toolchain-raspberry.cmake
-# Updated version:
-# https://github.com/Pro/raspi-toolchain/blob/master/Toolchain-rpi.cmake
+message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}.")
 
 if("$ENV{RASPBERRY_VERSION}" STREQUAL "")
     set(RASPBERRY_VERSION 1)
@@ -35,10 +42,11 @@ else()
     endif()
 endif()
 
-# RASPBIAN_ROOTFS should point to the local directory which contains all the libraries and includes from the target raspi.
+# RASPBIAN_ROOTFS environment variable should be set and point to the local directory which contains all the libraries
+# and includes from the target Raspberry.
 # Get them with:
-# rsync -vR --progress -rl --delete-after --safe-links pi@192.168.1.PI:/{lib,usr,opt/vc/lib} $HOME/rpi/rootfs
-# Then RASPBIAN_ROOTFS=$HOME/rpi/rootfs
+# rsync -vR --progress -rl --delete-after --safe-links pi@192.168.1.PI:/{lib,usr,opt/vc/lib} $HOME/workspace-raspberry/rootfs
+# Then RASPBIAN_ROOTFS=$HOME/workspace-raspberry/rootfs
 
 if("$ENV{RASPBIAN_ROOTFS}" STREQUAL "")
     message(FATAL_ERROR "Define the RASPBIAN_ROOTFS environment variable to point to the raspbian rootfs.")
@@ -85,12 +93,16 @@ set(LIB_DIRS
         "${SYSROOT_PATH}/usr/lib/${TOOLCHAIN_HOST}/lapack"
         )
 # You can additionally check the linker paths if you add the flags ' -Xlinker --verbose'
-set(COMMON_FLAGS "-I${SYSROOT_PATH}/usr/include ")
+set(COMMON_FLAGS "-I${SYSROOT_PATH}/usr/include")
 FOREACH(LIB ${LIB_DIRS})
     set(COMMON_FLAGS "${COMMON_FLAGS} -L${LIB} -Wl,-rpath-link,${LIB}")
 ENDFOREACH()
 
-set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};${SYSROOT_PATH}/usr/lib/${TOOLCHAIN_HOST}")
+if("${CMAKE_PREFIX_PATH}" STREQUAL "")
+    set(CMAKE_PREFIX_PATH "${SYSROOT_PATH}/usr/lib/${TOOLCHAIN_HOST}")
+else()
+    set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};${SYSROOT_PATH}/usr/lib/${TOOLCHAIN_HOST}")
+endif()
 
 if(RASPBERRY_VERSION VERSION_GREATER 2)
     set(CMAKE_C_FLAGS "-mcpu=cortex-a53 -mfpu=neon-vfpv4 -mfloat-abi=hard ${COMMON_FLAGS}" CACHE STRING "Flags for Raspberry PI 3")
@@ -105,11 +117,9 @@ endif()
 
 set(CMAKE_FIND_ROOT_PATH "${CMAKE_INSTALL_PREFIX};${CMAKE_PREFIX_PATH};${CMAKE_SYSROOT}")
 
-
-# search for programs in the build host directories
+# Search for programs in the build host directories
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-# for libraries and headers in the target directories
+# Search for libraries and headers in the target directories
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-

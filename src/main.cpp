@@ -1,24 +1,23 @@
 #include <iostream>
 #include <csignal>
 
-#include <ApplicationModel.hpp>
 #include <core/SerialLinkReader.hpp>
+
+#define RPI_SERIAL_LINK_DEVICE_NAME "/dev/ttyAMA0"
 
 void signalHandler(int signum);
 
-SerialLinkReader serialLinkReader("/dev/ttyAMA0", ApplicationModel::RPI_SERIAL_LINK_BAUD_RATE);
+SerialLinkReader serialLinkReader(RPI_SERIAL_LINK_DEVICE_NAME);
 
 int main(int argc, char** argv) {
     uint32_t deviceDescriptor = serialLinkReader.open();
     if (deviceDescriptor > 0) {
         signal(SIGINT, signalHandler);
 
-        char buffer[100];
-        while (true) {
-            serialLinkReader.readBuffer(buffer);
-        }
+        serialLinkReader.startReceiving();
+        serialLinkReader.waitUntilWeStopReceiving();
 
-        serialLinkReader.close();
+        std::cout << "End of reception loop" << std::endl;
         return EXIT_SUCCESS;
     } else {
         std::cerr << "ERROR: Failed to open serial link" << std::endl;
@@ -27,9 +26,10 @@ int main(int argc, char** argv) {
 }
 
 void signalHandler(int signum) {
-    if (signum == SIGINT) { // ctrl+C pressed
+    if (signum == SIGINT) {
+        std::cout << std::endl;
+        serialLinkReader.stopReceiving();
         serialLinkReader.close();
-        std::cout << "INFO: Closed device: " << serialLinkReader.getDeviceName() << std::endl;
         exit(-3);  // Echoes -3  for ^C (ASCII 3)
     }
 }

@@ -12,9 +12,13 @@ if(NOT WIRINGPI_LIB)
     message(FATAL_ERROR "wiringPi library not found")
 endif()
 
+# Search PThread library
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package (Threads REQUIRED)
+
 include_directories(src)
 
 add_subdirectory(src)
 
 add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
-target_link_libraries(${CMAKE_PROJECT_NAME} ${WIRINGPI_LIB})
+target_link_libraries(${CMAKE_PROJECT_NAME} ${WIRINGPI_LIB} Threads::Threads)

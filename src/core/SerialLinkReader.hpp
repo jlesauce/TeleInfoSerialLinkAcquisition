@@ -1,5 +1,15 @@
 #pragma once
 
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <memory>
+#include <cassert>
+#include <utility>
+#include <iostream>
+#include <chrono>
 #include <string>
 #include <iostream>
 #include <utility>
@@ -10,21 +20,71 @@
 
 class SerialLinkReader {
 public:
-    SerialLinkReader(std::string deviceName, const uint32_t baudRate) : deviceName(std::move(deviceName)),
-                                                                        baudRate(baudRate) {}
+    explicit SerialLinkReader(std::string serialDeviceName) : deviceName(std::move(serialDeviceName)),
+                                                              threadName("SerialLinkReceiverThread"),
+                                                              deviceDescriptor(-1),
+                                                              thread(nullptr),
+                                                              isStopRequested(false) {}
+
+    ~SerialLinkReader() {
+        stopReceiving();
+        close();
+    }
+
+    SerialLinkReader() = delete;
+    SerialLinkReader(const SerialLinkReader&) = delete;
+    SerialLinkReader& operator=(const SerialLinkReader&) = delete;
 
     uint32_t open() {
-        deviceDescriptor = serialOpen(deviceName.c_str(), baudRate);
+        deviceDescriptor = serialOpen(deviceName.c_str(), RPI_SERIAL_LINK_BAUD_RATE);
         if (deviceDescriptor < 0) {
             std::cerr << "ERROR: Failed to open device name " << deviceName << std::endl;
         }
         wiringPiSetup();
         configure();
-        std::cout << "Opened serial link device " << deviceName << ": descriptor=" << deviceDescriptor << std::endl;
 
+        std::cout << "Opened serial link device " << deviceName << ": descriptor=" << deviceDescriptor << std::endl;
         return deviceDescriptor;
     }
 
+    void startReceiving() {
+        if (deviceDescriptor > 0) {
+            createThread();
+        } else {
+            std::cerr << "ERROR: Serial link device not open" << std::endl;
+        }
+    }
+
+    void stopReceiving() {
+        if (!thread) {
+            return;
+        }
+        std::cout << "Stop thread " << threadName << std::endl;
+        isStopRequested = true;
+
+        thread->join();
+        thread = nullptr;
+        isStopRequested = false;
+        std::cout << "Thread " << threadName << " stopped successfully" << std::endl;
+    }
+
+    void waitUntilWeStopReceiving() {
+        thread->join();
+    }
+
+    void close() {
+        if (deviceDescriptor <= 0) {
+            return;
+        }
+        if (thread) {
+            std::cerr << "ERROR: Thread is still running" << std::endl;
+            return;
+        }
+        std::cout << "Close device " << deviceName << std::endl;
+        serialClose(deviceDescriptor);
+    }
+
+private:
     void configure() const {
         struct termios options{};
         tcgetattr(deviceDescriptor, &options);   // Read current options
@@ -34,40 +94,54 @@ public:
         tcsetattr(deviceDescriptor, 0, &options);   // Set new options
     }
 
-    void readBuffer(char* buffer) const {
+    int32_t readBuffer(char* buffer) const {
         if (deviceDescriptor <= 0) {
             std::cerr << "ERROR: device is not open: " << deviceName << std::endl;
-            return;
+            return -1;
         }
 
         ssize_t nbBytesToRead = sizeof(buffer);
         ssize_t nbBytesReceived = read(deviceDescriptor, buffer, nbBytesToRead);
         if (nbBytesReceived == -1) {
             std::cerr << "Error reading from serial port" << std::endl;
-            return;
+            return -1;
         } else if (nbBytesReceived == 0) {
-            std::cerr << "No more data" << std::endl;
-            return;
+            std::cerr << "ERROR: No more data" << std::endl;
+            return 0;
         } else {
             buffer[nbBytesReceived] = '\0';
-            std::cout << buffer; //Read serial data
+            return nbBytesReceived;
         }
     }
 
-    void close() const {
-        serialClose(deviceDescriptor);
+    void createThread() {
+        if (!thread) {
+            thread = std::make_unique<std::thread>(&SerialLinkReader::process, this);
+            if (thread) {
+                std::cout << "Created thread " << threadName << " successfully" << std::endl;
+            } else {
+                std::cerr << "ERROR: Failed to create thread " << threadName << std::endl;
+            }
+        } else {
+            std::cerr << "ERROR: Thread " << threadName << " already exist" << std::endl;
+        }
     }
 
-    void flush() const {
-        serialFlush(deviceDescriptor);
+    void process() {
+        char buffer[100];
+
+        while (!isStopRequested) {
+            int32_t nbBytesReceived = readBuffer(buffer);
+            if (nbBytesReceived) {
+                std::cout << buffer;
+            }
+        }
     }
 
-    const std::string& getDeviceName() const {
-        return deviceName;
-    }
-
-private:
+    static const uint32_t RPI_SERIAL_LINK_BAUD_RATE = 1200;
     const std::string deviceName;
-    const uint32_t baudRate;
-    uint32_t deviceDescriptor = -1;
+    const std::string threadName;
+    uint32_t deviceDescriptor;
+    std::unique_ptr<std::thread> thread;
+    bool isStopRequested;
 };

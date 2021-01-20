@@ -1,6 +1,5 @@
 set(HEADERS
         ${HEADERS}
-        ${CMAKE_CURRENT_SOURCE_DIR}/ApplicationModel.hpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SerialLinkReader.hpp
         PARENT_SCOPE)
 

@@ -1,22 +1,12 @@
 #pragma once
 
 #include <thread>
-#include <queue>
-#include <mutex>
-#include <atomic>
-#include <condition_variable>
-#include <memory>
-#include <cassert>
-#include <utility>
-#include <iostream>
-#include <chrono>
-#include <string>
-#include <iostream>
-#include <utility>
-#include <unistd.h>
 #include <wiringPi.h>
 #include <wiringSerial.h>
 #include <termios.h>
+#include <unistd.h>
+#include <sstream>
+#include <algorithm>
 
 class SerialLinkReader {
 public:
@@ -87,10 +77,10 @@ public:
 private:
     void configure() const {
         struct termios options{};
-        tcgetattr(deviceDescriptor, &options);   // Read current options
+        tcgetattr(deviceDescriptor, &options);
         options.c_cflag &= ~CSIZE;  // Mask out size
         options.c_cflag |= CS7;     // Or in 7-bits
-        options.c_cflag |= PARENB;  // Enable Parity - even by default
+        options.c_cflag |= PARENB;  // Enable Parity - Even by default
         tcsetattr(deviceDescriptor, 0, &options);   // Set new options
     }
 
@@ -128,14 +118,50 @@ private:
     }
 
     void process() {
+        std::string concatenator;
         char buffer[100];
 
         while (!isStopRequested) {
             int32_t nbBytesReceived = readBuffer(buffer);
             if (nbBytesReceived) {
-                std::cout << buffer;
+                std::string receivedString(buffer);
+
+                // Find "StartOfText" character used as message separator
+                if (uint32_t startOfText = receivedString.find('\x02') != std::string::npos) {
+                    processMessage(concatenator);
+                    concatenator.clear();
+                    concatenator += receivedString.substr(startOfText + 1, receivedString.size());
+                } else {
+                    concatenator += receivedString;
+                }
             }
         }
+    }
+
+    static void processMessage(std::string msg) {
+        removeNonPrintableCharacters(msg);
+        removeSpecialCharacters(msg);
+        std::cout << msg << std::endl;
+    }
+
+    static void removeNonPrintableCharacters(std::string& str) {
+        // get the ctype facet for wchar_t (Unicode code points in practice)
+        typedef std::ctype<wchar_t> ctype;
+        const auto& ct = std::use_facet<ctype>(std::locale());
+        // remove non printable Unicode characters
+        str.erase(std::remove_if(str.begin(),
+                                 str.end(),
+                                 [&ct](wchar_t ch) {
+                                     return !ct.is(ctype::print, ch);
+                                 }), str.end());
+    }
+
+    static void removeSpecialCharacters(std::string& str) {
+        str.erase(std::remove_if(str.begin(),
+                                 str.end(),
+                                 [](char c) {
+                                     return !(std::isalnum(c) || std::isspace(c));
+                                 }), str.end());
     }
 
     static const uint32_t RPI_SERIAL_LINK_BAUD_RATE = 1200;

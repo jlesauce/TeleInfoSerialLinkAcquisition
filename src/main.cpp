@@ -1,31 +1,35 @@
 #include <iostream>
-#include <unistd.h>
-#include <wiringPi.h>
-#include <wiringSerial.h>
+#include <csignal>
 
-using namespace std;
+#include <ApplicationModel.hpp>
+#include <core/SerialLinkReader.hpp>
 
-int main(int argc, char **argv) {
-    string serialDeviceAddress = "/dev/ttyAMA0";
+void signalHandler(int signum);
 
-    int levelSensor = serialOpen(serialDeviceAddress.c_str(), 19200);
-    wiringPiSetup();
-    serialPuts(levelSensor, "DP"); //Send command to the serial device
+SerialLinkReader serialLinkReader("/dev/ttyAMA0", ApplicationModel::RPI_SERIAL_LINK_BAUD_RATE);
 
-    while (true) {
+int main(int argc, char** argv) {
+    uint32_t deviceDescriptor = serialLinkReader.open();
+    if (deviceDescriptor > 0) {
+        signal(SIGINT, signalHandler);
+
         char buffer[100];
-        ssize_t length = read(levelSensor, &buffer, sizeof(buffer));
-        if (length == -1) {
-            cerr << "Error reading from serial port" << endl;
-            break;
-        } else if (length == 0) {
-            cerr << "No more data" << endl;
-            break;
-        } else {
-            buffer[length] = '\0';
-            cout << buffer; //Read serial data
+        while (true) {
+            serialLinkReader.readBuffer(buffer);
         }
-    }
 
-    return 0;
+        serialLinkReader.close();
+        return EXIT_SUCCESS;
+    } else {
+        std::cerr << "ERROR: Failed to open serial link" << std::endl;
+        return EXIT_FAILURE;
+    }
+}
+
+void signalHandler(int signum) {
+    if (signum == SIGINT) { // ctrl+C pressed
+        serialLinkReader.close();
+        std::cout << "INFO: Closed device: " << serialLinkReader.getDeviceName() << std::endl;
+        exit(-3);  // Echoes -3  for ^C (ASCII 3)
+    }
 }
